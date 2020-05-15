@@ -1,6 +1,6 @@
 from struct import unpack,pack
 import numpy as np
-
+import io
 dtypeToFormat={
   "int16":"h",
   "int32":"i",
@@ -23,9 +23,11 @@ formatToDtype={
   "d":"float64",
 }
 
+
+
 def read(input, return_header=False):
   obj={}
-  with open(input,'rb') as f:
+  with io.BytesIO(input) as f:
     endian = ">"
     placeholder=f.read(2)
     one,=unpack(endian+'H',placeholder)
@@ -49,9 +51,6 @@ def read(input, return_header=False):
       for _ in range(ndim):
         dim,=unpack(endian+'I',f.read(4))
         shape.append(dim)
-      
-      # shape=tuple(shape)        
-      
       variables[name]={"shape":shape,"size":np.prod(shape),"format":format,"position":position}
     
     obj['variables']=variables
@@ -61,19 +60,23 @@ def read(input, return_header=False):
     for name in obj['variables']:
       variable=variables[name]
       f.seek(variable['position'],0)
-      variable['data']=np.fromfile(f,dtype=formatToDtype[variable['format']],count=variable['size']).reshape(variable['shape'])
+      itemsize=np.dtype(formatToDtype[variable['format']]).itemsize
+      buf=f.read(itemsize*variable['size'])
+      variable['data']=np.frombuffer(buf,dtype=formatToDtype[variable['format']],count=variable['size']).reshape(variable['shape'])
     return obj      
     
 
 
-def write(output,obj):
+# def write(output,obj):
+def write(obj):  
   """
   {
     title:"",
     variables:[{name:"",data=np.ndarray}]
   }
   """
-  with open(output,'wb') as f:
+  with io.BytesIO() as f:
+  # with open(output,'wb') as f:
     
     endian = ">"
     
@@ -91,8 +94,6 @@ def write(output,obj):
       if not isinstance(data,np.ndarray):raise Exception("Needs to be an ndarray")
       ndim=data.ndim
       shape=data.shape
-      
-      
       format=dtypeToFormat[data.dtype.name].encode()
       variable['headerposition']=f.tell()
       f.write(pack(endian+'I',0))
@@ -105,10 +106,11 @@ def write(output,obj):
       variable=variables[name]
       data=variable['data']
       variable['position']=f.tell()
-      data.tofile(f)
+      f.write(data.tobytes())
     
     # Save variable position in the header
     for name in variables:
       variable=variables[name]
       f.seek(variable['headerposition'],0)
       f.write(pack(endian+'I',variable['position']))
+    return f.getvalue()
