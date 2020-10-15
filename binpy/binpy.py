@@ -1,32 +1,34 @@
 from struct import unpack,pack
 import numpy as np
 import io
-dtypeToFormat={
-  "int8":"b",
-  "int16":"h",
-  "int32":"i",
-  "int64":"q",
-  "uint8":"B",
-  "uint16":"H",
-  "uint32":"I",
-  "uint64":"Q",
-  "float32":"f",
-  "float64":"d",
-}
 
+# formatToDtype={
+#   "b":"int8",
+#   "h":"int16",
+#   "i":"int32",
+#   "q":"int64",
+#   "B":"uint8",
+#   "H":"uint16",
+#   "I":"uint32",
+#   "Q":"uint64",
+#   "f":"float32",
+#   "d":"float64",
+# }
 formatToDtype={
-  "b":"int8",
-  "h":"int16",
-  "i":"int32",
-  "q":"int64",
-  "B":"uint8",
-  "H":"uint16",
-  "I":"uint32",
-  "Q":"uint64",
-  "f":"float32",
-  "d":"float64",
+  "b":"i1",
+  "h":"i2",
+  "i":"i4",
+  "q":"i8",
+  "l":"i8",
+  "B":"u1",
+  "H":"u2",
+  "I":"u4",
+  "Q":"u8",
+  "L":"u8",
+  "f":"f4",
+  "d":"f8",
+  "M":"f8",
 }
-
 
 
 def read(input, return_header=False):
@@ -49,19 +51,20 @@ def read(input, return_header=False):
   
   variables={}
   for _ in range(nvar):
-    name,format,size,ndim=unpack(endian+'16s1sIB',f.read(16+1+4+1))
-    name=name.decode('ascii').rstrip('\x00')
-    format=format.decode('ascii').rstrip('\x00')
+    name,_type,size,ndim=unpack(endian+'64s1sIB',f.read(64+1+4+1))
+    name=name.decode('utf-8').rstrip('\x00')
+    _type=_type.decode('utf-8').rstrip('\x00')
     
     buf=f.read(ndim*4)
-    shape=np.frombuffer(buf,dtype="uint32",count=ndim)
+    shape=np.frombuffer(buf,dtype="{}u4".format(endian),count=ndim)
     
-    _t=formatToDtype[format]
+    _t="{}{}".format(endian,formatToDtype[_type])
     itemsize=np.dtype(_t).itemsize
     
     buf=f.read(size*itemsize)
     data=np.frombuffer(buf,dtype=_t,count=size).reshape(shape)
     
+    if _type=="M":data=data.astype("datetime64[ns]")
     variables[name]=data
   
   if not isinstance(input,io.BufferedReader):f.close()
@@ -78,26 +81,28 @@ def write(variables,filePath=None):
   }
   """
   if filePath is None:f=io.BytesIO()
-  else:f=open(filePath,"rb")
+  else:f=open(filePath,"wb")
     
   endian = ">"
   
   # Header 
   nvar = len(variables)
   f.write(pack(endian+'HB',1,nvar))
-  
+  # print(variables)
   for name in variables:
     data=variables[name]
+   
     if not isinstance(data,np.ndarray):raise Exception("Needs to be an ndarray")
     ndim=data.ndim
     shape=data.shape
     size=data.size
-    format=dtypeToFormat[data.dtype.name].encode()
-    f.write(pack(endian+'16s1sIB',name[:16].encode(),format,size,ndim))
-    # print(np.array(shape,dtype="I").tobytes())
+    format=data.dtype.char.encode("utf-8")
+    f.write(pack(endian+'64s1sIB',name[:64].encode("utf-8"),format,size,ndim))
     
-    f.write(np.array(shape,dtype="I").tobytes())
-    f.write(data.tobytes())
+    
+    f.write(np.array(shape,dtype="{}I".format(endian)).tobytes())
+    if data.dtype.char=="M":f.write(data.astype('datetime64[ns]').astype("{}{}".format(endian,"d")).tobytes())
+    else:f.write(data.astype("{}{}".format(endian,data.dtype.char)).tobytes())
   
   if filePath is None:buffer=f.getvalue()
   else:buffer=None
