@@ -63,7 +63,6 @@ def read(input, return_header=False):
     
     buf=f.read(size*itemsize)
     data=np.frombuffer(buf,dtype=_t,count=size).reshape(shape)
-    if _type=="M":print(data[0])
     if _type=="M":data=data.astype("datetime64[ms]")
     variables[name]=data
   
