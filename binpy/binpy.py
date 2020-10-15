@@ -63,8 +63,8 @@ def read(input, return_header=False):
     
     buf=f.read(size*itemsize)
     data=np.frombuffer(buf,dtype=_t,count=size).reshape(shape)
-    
-    if _type=="M":data=data.astype("datetime64[ns]")
+    if _type=="M":print(data[0])
+    if _type=="M":data=data.astype("datetime64[ms]")
     variables[name]=data
   
   if not isinstance(input,io.BufferedReader):f.close()
@@ -101,7 +101,7 @@ def write(variables,filePath=None):
     
     
     f.write(np.array(shape,dtype="{}I".format(endian)).tobytes())
-    if data.dtype.char=="M":f.write(data.astype('datetime64[ns]').astype("{}{}".format(endian,"d")).tobytes())
+    if data.dtype.char=="M":f.write(data.astype('datetime64[ms]').astype("{}{}".format(endian,"d")).tobytes())
     else:f.write(data.astype("{}{}".format(endian,data.dtype.char)).tobytes())
   
   if filePath is None:buffer=f.getvalue()
